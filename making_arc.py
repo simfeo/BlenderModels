@@ -1,4 +1,5 @@
 import bpy
+import bmesh
 from bpy.types import (
         Operator,
         Menu,
@@ -28,22 +29,12 @@ bl_info = {
 }
 
 
-# class MeshToolsMakeArch(bpy.types.Operator):
-#     bl_idname = "object.my_addon"
-#     bl_label = "My Addon"
-
-#     def execute(self, context):
-#         layout = self.layout
-#         layout.operator_context = 'INVOKE_DEFAULT'
-#         layout.operator("object.my_addon")
-#         return {'FINISHED'}
-
 
 
 class MeshToolsMakeArch(Operator):
     bl_idname = "mesh.make_arch"
-    bl_label = "Make Arch"
-    bl_description = "Move selected vertices into a circle shape"
+    bl_label = "Make arch"
+    bl_description = "Move selected vertices into an arc shape with center in 3d cursor"
     bl_options = {'REGISTER', 'UNDO'}
 
     custom_radius: BoolProperty(
@@ -66,8 +57,7 @@ class MeshToolsMakeArch(Operator):
         row.prop(self, "custom_radius")
         row_right = row.row(align=True)
         row_right.active = self.custom_radius
-        row_right.prop(self, "radius", text="")
-        
+
 
     def invoke(self, context, event):
         # load custom settings
@@ -95,7 +85,10 @@ class MeshToolsMakeArch(Operator):
         mode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode='OBJECT')
         selectedVerts = [v for v in bpy.context.active_object.data.vertices if v.select]
-        # print ("selected {} vertexes", len(selectedVerts))
+        print ("selected {} vertexes", len(selectedVerts))
+        if len(selectedVerts) < 2:
+            self.report({'WARNING'}, "too few points, should be at least 2")
+            return {'CANCELLED'}
         median_point = self.calc_center(selectedVerts)
         length = map(lambda x: self.calc_distance(median_point, x), selectedVerts)
         sum_length = sum(length)
@@ -103,30 +96,128 @@ class MeshToolsMakeArch(Operator):
         for v in  selectedVerts:
             self.set_new_position(v, self.calc_new_position(median_point, v, median_length))
         bpy.ops.object.mode_set(mode=mode)
-
-    def execute(self, context):
-        self.make_arc()
-
         return{'FINISHED'}
 
 
-class MeshToolsMenu(Menu):
+    def execute(self, context):
+        return self.make_arc()
+
+
+class MeshToolsMakeLine(Operator):
+    bl_idname = "mesh.make_line"
+    bl_label = "Make line"
+    bl_description = "Move selected vertices into a arc shape with center in 3d cursor"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    custom_radius: BoolProperty(
+        name="Align",
+        description="Force a custom radius",
+        default=False
+        )
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return(ob and ob.type == 'MESH' and context.mode == 'EDIT_MESH')
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+
+    def invoke(self, context, event):
+        # load custom settings
+        # settings_load(self)
+        return self.execute(context)
+
+    def add_val(self, val, vertex_holder):
+        if val in vertex_holder:
+            vertex_holder[val] +=1
+        else:
+            vertex_holder[val] = 1
+
+    def dec_val(self, val, vertex_holder):
+        if val in vertex_holder:
+            vertex_holder[val] -=1
+        else:
+            vertex_holder[val] = -1
+
+    def make_line(self):
+        mesh = bpy.context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+
+        selectedVerts = [v for v in bm.verts if v.select]
+        if len(selectedVerts) < 3:
+            return
+        vert_holder = {}
+        for vert in selectedVerts:
+            self.dec_val(vert.index, vert_holder)
+            for l in vert.link_edges:
+                self.add_val(l.other_vert(vert).index,vert_holder)
+
+        counter  = 0
+        a = None
+        b = None
+        for i in vert_holder:
+            if vert_holder[i] == 0:
+                counter += 1
+                if counter == 1:
+                    a = i
+                elif counter == 2:
+                    b = i
+                elif counter > 2:
+                    self.report({'WARNING'}, "should be only single line, but got more")
+                    return {'CANCELLED'}
+            elif vert_holder[i] < 0:
+                self.report({'WARNING'}, "should be only sigle line, but there is dot out of line")
+                return {'CANCELLED'}
+        if counter < 2:
+            self.report({'WARNING'}, "should be only sigle line, cannot found beginig and ending")
+            return {'CANCELLED'}
+        print(a,b)
+        mode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        selectedVerts = [v for v in bpy.context.active_object.data.vertices if v.select]
+        emesh = bpy.context.active_object.data
+        center = emesh.vertices[a].co
+        vec = emesh.vertices[b].co - center
+        vec_len = vec.length_squared
+        for vert in selectedVerts:
+            print (vert, vert.co)
+            if vert.index == a or vert.index == b:
+                continue
+            v1 = vert.co - center
+            vproj = v1.dot(vec)/vec_len * vec
+            print (vert.index, vproj)
+            vert.co = center + vproj
+        
+        bpy.ops.object.mode_set(mode=mode)
+        return{'FINISHED'}
+
+    def execute(self, context):
+        return self.make_line()
+
+
+
+
+class VIEW3D_MT_MeshToolsMenu(Menu):
     bl_label = "Mesh Tools"
 
     def draw(self, context):
         layout = self.layout
 
         layout.operator("mesh.make_arch")
+        layout.operator("mesh.make_line")
 
 
 # define classes for registration
 classes = (
-    MeshToolsMenu,
-    MeshToolsMakeArch
+    VIEW3D_MT_MeshToolsMenu,
+    MeshToolsMakeArch,
+    MeshToolsMakeLine
 )
 
 def menu_func(self, context):
-    self.layout.menu("MeshToolsMenu")
+    self.layout.menu("VIEW3D_MT_MeshToolsMenu")
     self.layout.separator()
 
 # registering and menu integration
