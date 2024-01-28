@@ -13,12 +13,20 @@ bl_info = {
     "category": "Mesh",
 }
 
+def in_object_mode(func):
+    def wrapper(*args, **kwargs):
+        mode = bpy.context.active_object.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        result = func(*args, **kwargs)
+        bpy.ops.object.mode_set(mode=mode)
+        return result
+    return wrapper
+
 class MeshToolsMakeArch(Operator):
     bl_idname = "mesh.make_arch"
     bl_label = "Make arch"
     bl_description = "Shape selected vertices into an arch shape with center in 3d cursor"
     bl_options = {'REGISTER', 'UNDO'}
-
 
     @classmethod
     def poll(cls, context):
@@ -47,9 +55,8 @@ class MeshToolsMakeArch(Operator):
         print (vertex.co - position)
         vertex.co = position
 
+    @in_object_mode
     def make_arc(self):
-        mode = bpy.context.active_object.mode
-        bpy.ops.object.mode_set(mode='OBJECT')
         selectedVerts = [v for v in bpy.context.active_object.data.vertices if v.select]
         print ("selected {} vertexes", len(selectedVerts))
         if len(selectedVerts) < 2:
@@ -61,9 +68,7 @@ class MeshToolsMakeArch(Operator):
         median_length = sum_length/len(selectedVerts)
         for v in  selectedVerts:
             self.set_new_position(v, self.calc_new_position(median_point, v, median_length))
-        bpy.ops.object.mode_set(mode=mode)
         return{'FINISHED'}
-
 
     def execute(self, context):
         return self.make_arc()
