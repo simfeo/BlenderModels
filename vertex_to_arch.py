@@ -38,36 +38,40 @@ class MeshToolsMakeArch(Operator):
         # settings_load(self)
         return self.execute(context)
 
-    def calc_center(self, selectedVerts):
-        median_point = bpy.context.scene.cursor.location
-        #median_point.y = selectedVerts[0].co.y
-        return median_point
+    def calc_distance(self, vertex):
+        return (vertex.co).length
 
-    def calc_distance(self, center, vertex):
-        return (vertex.co - center).length
-
-    def calc_new_position(self, center, vertex, length):
-        vec_normalized = vertex.co-center
+    def calc_new_position(self, vertex, length):
+        vec_normalized = vertex.co
         vec_normalized.normalize()
-        return center + vec_normalized * length
+        return vec_normalized * length
 
     def set_new_position(self, vertex, position):
-        print (vertex.co - position)
         vertex.co = position
 
     @in_object_mode
     def make_arc(self):
+        object_initial_loc = bpy.context.active_object.location.copy()
+        cursor_inital_loc = bpy.context.scene.cursor.location.copy()
+        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+
         selectedVerts = [v for v in bpy.context.active_object.data.vertices if v.select]
         print ("selected {} vertexes", len(selectedVerts))
         if len(selectedVerts) < 2:
             self.report({'WARNING'}, "too few points, should be at least 2")
             return {'CANCELLED'}
-        median_point = self.calc_center(selectedVerts)
-        length = map(lambda x: self.calc_distance(median_point, x), selectedVerts)
+        
+        length = map(lambda x: self.calc_distance(x), selectedVerts)
         sum_length = sum(length)
         median_length = sum_length/len(selectedVerts)
+
         for v in  selectedVerts:
-            self.set_new_position(v, self.calc_new_position(median_point, v, median_length))
+            self.set_new_position(v, self.calc_new_position(v, median_length))
+
+        bpy.context.scene.cursor.location = object_initial_loc
+        bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+        bpy.context.scene.cursor.location = cursor_inital_loc
+
         return{'FINISHED'}
 
     def execute(self, context):
