@@ -20,6 +20,11 @@ bl_info = {
 
 def in_object_mode(func):
     def wrapper(*args, **kwargs):
+        if [bpy.context.active_object] != bpy.context.selected_objects:
+            for i in bpy.context.selected_objects:
+                i.select_set(False)
+            bpy.context.active_object.select_set(True)
+            
         mode = bpy.context.active_object.mode
         bpy.ops.object.mode_set(mode='OBJECT')
         object_initial_loc = bpy.context.active_object.location.copy()
